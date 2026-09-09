@@ -1,3 +1,5 @@
 allowBuilds:
+  "@whiskeysockets/baileys": true
   electron: true
   electron-winstaller: true
+  protobufjs: true
