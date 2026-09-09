@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Mega Lead Connect",
+  "version": "1.0.0",
+  "description": "Conecta o Mega Lead ao seu WhatsApp Web para enviar e receber mensagens dentro do app.",
+  "permissions": ["storage", "tabs", "scripting"],
+  "host_permissions": [
+    "https://web.whatsapp.com/*",
+    "https://*.lovable.app/*",
+    "https://megalead.lovable.app/*",
+    "http://localhost/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://web.whatsapp.com/*"],
+      "js": ["whatsapp.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://*.lovable.app/*",
+        "https://megalead.lovable.app/*",
+        "http://localhost/*"
+      ],
+      "js": ["bridge.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "action": { "default_popup": "popup.html" },
+  "icons": { "48": "icon.png", "128": "icon.png" }
+}

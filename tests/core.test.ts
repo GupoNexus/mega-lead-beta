@@ -1,0 +1,10 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { chooseOutboundKind, isCustomerServiceWindowOpen, messageJobIdempotencyKey, normalizeWhatsAppPhone, retryDelaySeconds, suppressionKey, webhookEventId } from "../src/lib/message-policy.ts";
+import { decryptSecret, encryptSecret, rotateSecret } from "../src/lib/secrets.server.ts";
+
+test("criptografia AES-GCM não grava texto e autentica conteúdo",()=>{process.env.TOKEN_ENCRYPTION_KEY_V1=Buffer.alloc(32,7).toString("base64");process.env.TOKEN_ENCRYPTION_ACTIVE_VERSION="1";const value=encryptSecret("token-super-secreto");assert.match(value,/^mlsec:/);assert.ok(!value.includes("token-super-secreto"));assert.equal(decryptSecret(value),"token-super-secreto");assert.equal(decryptSecret(rotateSecret(value)),"token-super-secreto")});
+test("texto somente dentro da janela de 24h e template fora",()=>{const now=Date.now();assert.equal(isCustomerServiceWindowOpen(new Date(now+1000).toISOString(),now),true);assert.equal(chooseOutboundKind({windowExpiresAt:new Date(now+1000).toISOString(),now}),"text");assert.equal(chooseOutboundKind({windowExpiresAt:new Date(now-1000).toISOString(),approvedTemplate:true,now}),"template");assert.equal(chooseOutboundKind({windowExpiresAt:null,approvedTemplate:false,now}),"blocked")});
+test("supressão é isolada por tenant/canal e normaliza telefone",()=>{assert.equal(normalizeWhatsAppPhone("(11) 99999-0000"),"5511999990000");assert.notEqual(suppressionKey("u1","c1","11999990000"),suppressionKey("u2","c1","11999990000"));assert.notEqual(suppressionKey("u1","c1","11999990000"),suppressionKey("u1","c2","11999990000"))});
+test("idempotência do webhook e jobs é determinística",()=>{assert.equal(webhookEventId("message","wamid.1"),webhookEventId("message","wamid.1"));assert.notEqual(webhookEventId("status","wamid.1","sent","1"),webhookEventId("status","wamid.1","read","2"));assert.equal(messageJobIdempotencyKey("job:a","target:b"),"job:a:target:target:b")});
+test("retry usa backoff exponencial com teto",()=>{assert.deepEqual([1,2,3,4].map(n=>retryDelaySeconds(n)),[15,30,60,120]);assert.equal(retryDelaySeconds(20),3600)});

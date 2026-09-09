@@ -1,0 +1,41 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import crypto from 'node:crypto';
+import { desktop } from './cdp.mjs';
+const env=Object.fromEntries(fs.readFileSync('.env','utf8').split(/\r?\n/).filter(x=>/^\w+=/.test(x)).map(x=>{const i=x.indexOf('=');return [x.slice(0,i),x.slice(i+1).replace(/^["']|["']$/g,'')];}));
+const url=env.VITE_SUPABASE_URL, key=env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const d=await desktop(),id=crypto.randomUUID(),name='TESTE TEMPORÁRIO — auditoria CRM';
+const rest=async(method,body)=>d.evaluate("(async()=>{const k=Object.keys(localStorage).find(k=>k.startsWith('sb-')&&k.endsWith('-auth-token'));const s=JSON.parse(localStorage.getItem(k));if(!s?.access_token)throw new Error('Sessão indisponível');const r=await fetch("+JSON.stringify(url+'/rest/v1/leads?id=eq.'+id)+",{method:"+JSON.stringify(method)+",headers:{apikey:"+JSON.stringify(key)+",Authorization:'Bearer '+s.access_token,'Content-Type':'application/json',Prefer:'return=representation'},body:"+(body?"JSON.stringify({..."+JSON.stringify(body)+",user_id:s.user.id})":"undefined")+"});if(!r.ok)throw new Error('Falha no registro de teste: '+r.status);return r.status===204?[]:r.json();})()");
+const card="[...document.querySelectorAll('[draggable]')].find(c=>c.innerText.includes("+JSON.stringify(name)+"))";
+try{
+  await rest('POST',{id,place_id:'audit-'+id,name,status:'novo'});
+  await d.evaluate("location.assign('/crm')");
+  await d.wait('document.body?.innerText.includes('+JSON.stringify(name)+')');
+  await d.call('Page.bringToFront');
+  await d.evaluate('window.scrollTo(0,0)');
+  const drag=await d.evaluate("(()=>{const c="+card+";const dt=new DataTransfer();c.dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:dt}));const target=c.parentElement.parentElement.nextElementSibling.getBoundingClientRect();return {id:dt.getData('text/plain'),x:target.x+80,y:target.y+90};})()");
+  assert.equal(drag.id,id);
+  const data={items:[{mimeType:'text/plain',data:id}],dragOperationsMask:1};
+  for(const type of ['dragEnter','dragOver','drop'])await d.call('Input.dispatchDragEvent',{type,x:drag.x,y:drag.y-75,data});
+  await d.wait(card+"?.querySelector('select')?.value==='contatado'");
+  await new Promise(r=>setTimeout(r,1000));
+  assert.equal((await rest('GET'))[0].status,'contatado');
+  await d.evaluate("location.reload()");
+  await d.wait(card+"?.querySelector('select')?.value==='contatado'");
+  console.log('CRM: arrastar e soltar persistiu a etapa e sobreviveu à recarga.');
+  await d.evaluate("(()=>{const s="+card+".querySelector('select');s.value='descartado';s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+  await new Promise(r=>setTimeout(r,1200));
+  assert.equal((await rest('GET'))[0].status,'descartado');
+  await d.evaluate("location.assign('/leads')");
+  await d.wait('document.body?.innerText.includes("Lixeira")');
+  await d.evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Lixeira').click()");
+  await d.wait('document.body.innerText.includes('+JSON.stringify(name)+')');
+  await d.evaluate("[...document.querySelectorAll('tr')].find(r=>r.innerText.includes("+JSON.stringify(name)+")).querySelector('button[title=\"Restaurar lead\"]').click()");
+  await new Promise(r=>setTimeout(r,1200));
+  assert.equal((await rest('GET'))[0].status,'novo');
+  console.log('Lixeira: descarte reversível e restauração aprovados na interface e no banco.');
+} finally {
+  await rest('DELETE');
+  await d.evaluate("location.reload()");
+  d.close();
+}
