@@ -19,6 +19,7 @@ dist-ssr
 .output
 release
 public/downloads/*.exe
+public/downloads/*.exe.part*
 .vinxi
 .tanstack/**
 .nitro
